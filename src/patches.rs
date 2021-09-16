@@ -4181,7 +4181,6 @@ fn patch_ctwk_ball(res: &mut structs::Resource, ctwk_config: &CtwkConfig)
 -> Result<(), String>
 {
     let mut ctwk = res.kind.as_ctwk_mut().unwrap();
-    println!("patched res=0x{:X}", res.file_id);
 
     let ctwk_ball = match &mut ctwk {
         structs::Ctwk::CtwkBall(i) => i,
@@ -5486,12 +5485,6 @@ fn build_and_run_patches(gc_disc: &mut structs::GcDisc, config: &PatchConfig, ve
                         skip_hudmemos,
                     ),
                 );
-
-                // add pickup dot to map
-                /*patcher.add_resource_patch(
-                    (&[pak_name.as_bytes()], room_info.mapa_id, b"MAPA".into()),
-                    move |res| patch_add_pickup_dot(res, /* instance id */, (*pickup_location).position)
-                );*/
 
                 idx = idx + 1;
             }

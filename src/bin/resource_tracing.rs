@@ -817,7 +817,10 @@ fn patch_dependencies(pickup_kind: u32, deps: &mut HashSet<ResourceKey>)
         deps.insert(ResourceKey::from(custom_asset_ids::PHAZON_SUIT_ANCS));
         deps.insert(ResourceKey::from(custom_asset_ids::PHAZON_SUIT_TXTR1));
         deps.insert(ResourceKey::from(custom_asset_ids::PHAZON_SUIT_TXTR2));
-    };
+    } else if pickup_kind == PickupType::HealthRefill.kind() {
+        // remove this unused asset that crashses pal
+        deps.remove(&resource_info!("ringy2.PART").into());
+    }
 }
 
 fn create_nothing(pickup_table: &mut HashMap<PickupModel, PickupData>)
