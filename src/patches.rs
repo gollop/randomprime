@@ -294,6 +294,8 @@ fn patch_add_item<'r>(
     pickup_scans: &HashMap<PickupHashKey, (ResId<res_id::SCAN>, ResId<res_id::STRG>)>,
     pickup_hash_key: PickupHashKey,
     skip_hudmemos: bool,
+    new_layer_idx: usize,
+    pickup_obj_instance_id: u32,
 ) -> Result<(), String>
 {
     let room_id = area.mlvl_area.internal_id;
@@ -320,8 +322,6 @@ fn patch_add_item<'r>(
             "Randomizer - Pickup ({:?})", pickup_model_type.pickup_data().name)).unwrap();
     area.add_layer(Cow::Owned(name));
 
-    let new_layer_idx = area.layer_flags.layer_count as usize - 1;
-
     // Add hudmemo string as dependency to room //
     let hudmemo_strg: ResId<res_id::STRG> = {
         if pickup_config.hudmemo_text.is_some() {
@@ -330,6 +330,11 @@ fn patch_add_item<'r>(
             pickup_type.hudmemo_strg()
         }
     };
+
+    while area.layer_flags.layer_count as usize <= new_layer_idx {
+        let name = CString::new("Randomizer - Pickup ({:?})").unwrap();
+        area.add_layer(Cow::Owned(name));
+    }
 
     let hudmemo_dep: structs::Dependency = hudmemo_strg.into();
     let deps_iter = deps_iter.chain(iter::once(hudmemo_dep));
@@ -432,7 +437,7 @@ fn patch_add_item<'r>(
     pickup.actor_params.scan_params.scan = scan_id;
 
     let mut pickup_obj = structs::SclyObject {
-        instance_id: ps.fresh_instance_id_range.next().unwrap(),
+        instance_id: pickup_obj_instance_id,
         connections: vec![].into(),
         property_data: structs::SclyProperty::Pickup(
             Box::new(pickup)
@@ -5319,8 +5324,10 @@ fn build_and_run_patches(gc_disc: &mut structs::GcDisc, config: &PatchConfig, ve
     // Patch pickups
     for (pak_name, rooms) in pickup_meta::ROOM_INFO.iter() {
         let world = World::from_pak(pak_name).unwrap();
-
+        let mut area_id = -1;
         for room_info in rooms.iter() {
+            area_id = area_id + 1;
+            // println!("area=0x{:X}, id={}", room_info.room_id.to_u32(), area_id);
             if remove_control_disabler {
                 patcher.add_scly_patch(
                     (pak_name.as_bytes(), room_info.room_id.to_u32()),
@@ -5455,6 +5462,8 @@ fn build_and_run_patches(gc_disc: &mut structs::GcDisc, config: &PatchConfig, ve
             }
 
             // Patch extra item locations
+            let mut new_layer_idx: usize = 16;
+            let mut instance_id_offset = 0;
             while idx < pickups_config_len {
                 let pickup = pickups[idx].clone(); // TODO: cloning is suboptimal
 
@@ -5472,6 +5481,10 @@ fn build_and_run_patches(gc_disc: &mut structs::GcDisc, config: &PatchConfig, ve
                     }
                 };
 
+                let position = pickups[idx].clone().position.unwrap();
+                let instance_id: u32 = ((new_layer_idx as u32) << 26) | ((area_id as u32) << 16) | (0x0000BABE + instance_id_offset);
+                instance_id_offset = instance_id_offset + 1;
+
                 patcher.add_scly_patch(
                     (pak_name.as_bytes(), room_info.room_id.to_u32()),
                     move |_ps, area| patch_add_item(
@@ -5483,7 +5496,16 @@ fn build_and_run_patches(gc_disc: &mut structs::GcDisc, config: &PatchConfig, ve
                         pickup_scans,
                         key,
                         skip_hudmemos,
+                        new_layer_idx,
+                        instance_id,
                     ),
+                );
+                new_layer_idx = new_layer_idx + 1;
+
+                // add pickup dot to map
+                patcher.add_resource_patch(
+                    (&[pak_name.as_bytes()], room_info.mapa_id.to_u32(), b"MAPA".into()),
+                    move |res| patch_add_pickup_dot(res, instance_id, position)
                 );
 
                 idx = idx + 1;
