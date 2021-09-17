@@ -761,6 +761,41 @@ fn modify_pickups_in_mrea<'r>(
             }.into(),
         };
 
+        let special_function = structs::SclyObject {
+            instance_id: ps.fresh_instance_id_range.next().unwrap(),
+            connections: vec![].into(),
+            property_data: structs::SclyProperty::SpecialFunction(
+                Box::new(structs::SpecialFunction {
+                    name: b"myspecialfun\0".as_cstr(),
+                    position: [0., 0., 0.].into(),
+                    rotation: [0., 0., 0.].into(),
+                    type_: 16, // layer change
+                    unknown0: b"\0".as_cstr(),
+                    unknown1: 0.,
+                    unknown2: 0.,
+                    unknown3: 0.,
+                    layer_change_room_id: room_id,
+                    layer_change_layer_id: mapa_layer_idx as u32,
+                    item_id: 0,
+                    unknown4: 1, // active
+                    unknown5: 0.,
+                    unknown6: 0xFFFFFFFF,
+                    unknown7: 0xFFFFFFFF,
+                    unknown8: 0xFFFFFFFF,
+                })
+            ),
+        };
+
+        additional_connections.push(structs::Connection {
+            state: structs::ConnectionState::ARRIVED,
+            message: structs::ConnectionMsg::DECREMENT,
+            target_object_id: special_function.instance_id,
+        });
+
+        layers[mapa_layer_idx].objects
+            .as_mut_vec()
+            .push(special_function);
+
         layers[mapa_layer_idx].objects
             .as_mut_vec()
             .push(new_relay);
@@ -5344,16 +5379,6 @@ fn build_and_run_patches(gc_disc: &mut structs::GcDisc, config: &PatchConfig, ve
             ),
         );
     }
-    patcher.add_scly_patch(
-        resource_info!("06_under_intro_freight.MREA").into(),
-        move |ps, area| patch_add_poi(
-            ps, area,
-            game_resources,
-            custom_asset_ids::CFLDG_POI_SCAN,
-            custom_asset_ids::CFLDG_POI_STRG,
-            [-44.0, 361.0, -120.0],
-        ),
-    );
 
     // Patch pickups
     for (pak_name, rooms) in pickup_meta::ROOM_INFO.iter() {
@@ -5425,7 +5450,7 @@ fn build_and_run_patches(gc_disc: &mut structs::GcDisc, config: &PatchConfig, ve
             };
 
             // Patch existing item locations
-            let mut new_layer_idx: usize = 13; // TODO: don't just waste a bunch of layers for no good reason
+            let mut new_layer_idx: usize = 8; // TODO: don't just waste a bunch of layers for no good reason
             let mut instance_id_offset = 0;
             let mut idx = 0;
             let pickups_config_len = pickups.len();
@@ -5504,7 +5529,7 @@ fn build_and_run_patches(gc_disc: &mut structs::GcDisc, config: &PatchConfig, ve
             }
 
             // Patch extra item locations
-            new_layer_idx = 13;
+            new_layer_idx = 8;
             instance_id_offset = 0;
             while idx < pickups_config_len {
                 let pickup = pickups[idx].clone(); // TODO: cloning is suboptimal
