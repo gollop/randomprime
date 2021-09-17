@@ -332,7 +332,7 @@ fn patch_add_item<'r>(
     };
 
     while area.layer_flags.layer_count as usize <= new_layer_idx {
-        let name = CString::new("Randomizer - Pickup ({:?})").unwrap();
+        let name = CString::new("filler layer").unwrap();
         area.add_layer(Cow::Owned(name));
     }
 
@@ -655,6 +655,8 @@ fn modify_pickups_in_mrea<'r>(
     skip_hudmemos: bool,
     hudmemo_delay: f32,
     qol_pickup_scans: bool,
+    mapa_layer_idx: usize,
+    mapa_relay_instance_id: u32,
 ) -> Result<(), String>
 {
     // Pickup to use for game functionality //
@@ -737,11 +739,32 @@ fn modify_pickups_in_mrea<'r>(
         }
     };
 
+    // add a relay on a specific layer so that the mapa dot can dissapear //
+    while area.layer_flags.layer_count as usize <= mapa_layer_idx {
+        let name = CString::new("filler layer").unwrap();
+        area.add_layer(Cow::Owned(name));
+    }
+
     let room_id = area.mlvl_area.internal_id;
     let scly = area.mrea().scly_section_mut();
     let layers = scly.layers.as_mut_vec();
 
     let mut additional_connections = Vec::new();
+
+    {
+        let new_relay = structs::SclyObject {
+            instance_id: mapa_relay_instance_id,
+            connections: vec![].into(),
+            property_data: structs::Relay {
+                name: b"mapa relay\0".as_cstr(),
+                active: 1,
+            }.into(),
+        };
+
+        layers[mapa_layer_idx].objects
+            .as_mut_vec()
+            .push(new_relay);
+    }
 
     // Add a post-pickup relay. This is used to support cutscene-skipping
     let instance_id = ps.fresh_instance_id_range.next().unwrap();
@@ -863,6 +886,7 @@ fn modify_pickups_in_mrea<'r>(
         .find(|obj| obj.instance_id ==  location.instance_id)
         .unwrap();
     update_attainment_audio(attainment_audio, pickup_type);
+    
     Ok(())
 }
 
@@ -5391,6 +5415,8 @@ fn build_and_run_patches(gc_disc: &mut structs::GcDisc, config: &PatchConfig, ve
             };
 
             // Patch existing item locations
+            let mut new_layer_idx: usize = 13; // TODO: don't just waste a bunch of layers for no good reason
+            let mut instance_id_offset = 0;
             let mut idx = 0;
             let pickups_config_len = pickups.len();
             for pickup_location in room_info.pickup_locations.iter() {
@@ -5434,6 +5460,9 @@ fn build_and_run_patches(gc_disc: &mut structs::GcDisc, config: &PatchConfig, ve
                     }
                 };
 
+                let instance_id: u32 = ((new_layer_idx as u32) << 26) | ((area_id as u32) << 16) | (0x0000BABE + instance_id_offset);
+                instance_id_offset = instance_id_offset + 1;
+
                 // modify pickup, connections, hudmemo etc.
                 patcher.add_scly_patch(
                     (pak_name.as_bytes(), room_info.room_id.to_u32()),
@@ -5449,21 +5478,24 @@ fn build_and_run_patches(gc_disc: &mut structs::GcDisc, config: &PatchConfig, ve
                             skip_hudmemos,
                             hudmemo_delay,
                             config.qol_pickup_scans,
+                            new_layer_idx,
+                            instance_id,
                         )
                 );
+                new_layer_idx = new_layer_idx + 1;
 
                 // add pickup dot to map
                 patcher.add_resource_patch(
                     (&[pak_name.as_bytes()], room_info.mapa_id.to_u32(), b"MAPA".into()),
-                    move |res| patch_add_pickup_dot(res, (*pickup_location).location.instance_id, (*pickup_location).position)
+                    move |res| patch_add_pickup_dot(res, instance_id, (*pickup_location).position)
                 );
 
                 idx = idx + 1;
             }
 
             // Patch extra item locations
-            let mut new_layer_idx: usize = 16;
-            let mut instance_id_offset = 0;
+            new_layer_idx = 13;
+            instance_id_offset = 0;
             while idx < pickups_config_len {
                 let pickup = pickups[idx].clone(); // TODO: cloning is suboptimal
 
